@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>저울 – 픽셀 영화 소품 비교</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --W: 1500; --H: 1200; 
+    --BEAM: 800; --PIVOT_Y: 220;
+    --CHAIN: 260; --PAN_W: 170; --PAN_H: 28; --MAX_DEG: 18;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:#111;color:#fff;font-family:"Noto Sans KR",sans-serif;}
+  .wrap{width:calc(var(--W)*1px);margin:24px auto;}
+  .hud{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px;color:#b9c2ca;}
+  .btn{border:1px solid #39424a;background:#222830;color:#e9eef3;border-radius:10px;padding:.55rem .9rem;cursor:pointer;}
+  .btn:hover{background:#2c323a;}
+  .stage{position:relative;width:calc(var(--W)*1px);height:calc(var(--H)*1px);
+         background:#121212;border-radius:14px;outline:1px solid #1f2328;overflow:hidden;}
+
+  .pivot{position:absolute;left:50%;top:calc(var(--PIVOT_Y)*1px);width:40px;height:40px;
+         border-radius:50%;background:#fff;transform:translateX(-50%);z-index:5;}
+  .beam{position:absolute;left:50%;top:calc(var(--PIVOT_Y)*1px);
+    width:calc(var(--BEAM)*1px);height:6px;background:#fff;border-radius:4px;
+    transform-origin:50% 0;transform:translateX(-50%) rotate(0deg);
+    transition:transform .3s ease-out;z-index:4;}
+  .chain{position:absolute;width:4px;height:calc(var(--CHAIN)*1px);background:#fff;border-radius:2px;
+         transition:transform .3s ease-out;z-index:3;}
+  .pan{
+    position:absolute;width:calc(var(--PAN_W)*1px);height:calc(var(--PAN_H)*1px);
+    background:#fff;border-radius:8px;transition:transform .3s ease-out;z-index:3;
+    display:flex;justify-content:center;align-items:flex-start;padding-top:4px;
+  }
+  .pan.highlight{outline:2px dashed #00ffff;}
+  .badge{position:absolute;padding:.3rem .6rem;border:1px solid #303740;background:#1d2228;border-radius:999px;
+         font-size:12px;color:#e5ebf1;transform:translate(-50%,-50%);z-index:6;}
+
+  .box{
+    width:120px;height:120px;border-radius:10px;background:#fff;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 10px 20px rgba(0,0,0,.35);
+    cursor:grab;user-select:none;touch-action:none;transition:transform .3s ease-out;
+    position:absolute;
+  }
+  .box img{width:100%;height:100%;object-fit:contain;}
+  .box:active{cursor:grabbing;transform:scale(1.05);}
+
+  /* 🔵 인포박스 */
+  #info-box{
+    position:fixed; top:20px; right:20px; width:240px;
+    background:rgba(255,255,255,0.95); border:2px solid #000; border-radius:8px;
+    padding:12px; display:none; z-index:9999; box-shadow:0 4px 10px rgba(0,0,0,.25);
+    color:#000; font-size:13px; line-height:1.5;
+  }
+  #info-box img{width:100%; height:auto; margin-bottom:8px;}
+
+  /* 🔴 비교 팝업 (한 번만 정의) */
+  #popup{
+    position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; justify-content:center; align-items:center; z-index:99999;
+  }
+  #popup-content{
+    background:#fff; color:#000; width:500px; border-radius:10px; padding:20px 30px; text-align:center;
+  }
+  #popup-items{display:flex; justify-content:space-between; gap:16px; margin:20px 0;}
+  .popup-item{width:45%;}
+  .popup-item img{width:100px; height:100px; object-fit:contain;}
+  #close-popup{background:#000; color:#fff; border:none; padding:10px 20px; border-radius:6px; cursor:pointer;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hud">
+      <div>소품을 저울 판 위로 드래그하면 가격에 따라 저울이 기울어집니다.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="shuffle">재배치</button>
+        <button class="btn" id="reset">초기화</button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="pivot"></div>
+      <img id="center-img" src="images/center.png" alt="center">
+      <div class="beam" id="beam"></div>
+      <div class="chain" id="chainL"></div>
+      <div class="chain" id="chainR"></div>
+      <div class="pan" id="panL"></div>
+      <div class="pan" id="panR"></div>
+      <div class="badge" id="sumL">₩0</div>
+      <div class="badge" id="sumR">₩0</div>
+    </div>
+    <style>
+#center-img {
+  position: absolute;
+  top: calc(var(--PIVOT_Y) * 1.6px);
+  left: 50%;
+  transform: translate(-50%, -20%);
+  width: 350px;
+  height: auto;
+  z-index: 6;
+  pointer-events: none;
+}
+</style>
+
+  </div>
+
+  <!-- 🔵 인포박스 -->
+  <div id="info-box">
+    <img id="info-image" src="" alt="">
+    <div id="info-text"></div>
+  </div>
+
+  <!-- 🔴 비교 팝업 (반드시 body 안쪽!) -->
+  <div id="popup">
+    <div id="popup-content">
+      <h2>소품 비교 결과</h2>
+      <div id="popup-items">
+        <div class="popup-item" id="left-item"></div>
+        <div class="popup-item" id="right-item"></div>
+      </div>
+      <p id="popup-result"></p>
+      <button id="close-popup">닫기</button>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script>
+  const $ = s => document.querySelector(s);
+  const $$ = s => [...document.querySelectorAll(s)];
+  const stage=$('#stage'), beam=$('#beam');
+  const chainL=$('#chainL'), chainR=$('#chainR');
+  const panL=$('#panL'), panR=$('#panR');
+  const sumL=$('#sumL'), sumR=$('#sumR');
+  const BEAM=cssNum('--BEAM'), HALF=BEAM/2;
+  const CHAIN=cssNum('--CHAIN'), PIVOTY=cssNum('--PIVOT_Y');
+  const PANW=cssNum('--PAN_W'), PANH=cssNum('--PAN_H');
+  const MAXDG=cssNum('--MAX_DEG');
+  const infoBox = $('#info-box');
+  const infoImage = $('#info-image');
+  const infoText = $('#info-text');
+
+  function cssNum(v){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v));}
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function pivotX(){return stage.clientWidth/2;}
+
+ function spawnBoxes() {
+  $$('.box').forEach(b => b.remove());
+
+  propsData.forEach(p => {
+    const b = document.createElement('div');
+    b.className = 'box';
+    b.dataset.price = p.price;
+
+    const img = document.createElement('img');
+    img.src = p.image;
+    img.alt = p.name;
+    b.appendChild(img);
+
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    b.style.left = (Math.random() * (sw - 160 - 40) + 20) + 'px';
+    b.style.top = (Math.random() * (sh * 0.35 - 80 - 20) + 20) + 'px';
+    stage.appendChild(b);
+    dragify(b);
+
+    // 🟢 hover 인포박스
+    b.addEventListener('mouseenter', () => {
+      infoImage.src = p.image;
+      infoText.innerHTML = `
+        <strong>${p.name}</strong><br>
+        <em>${p.movie}</em><br>
+        💵 $${p.price.toLocaleString()}
+      `;
+      infoBox.style.display = 'block';
+    });
+
+    b.addEventListener('mouseleave', () => {
+      infoBox.style.display = 'none';
+    });
+  }); // ✅ ← forEach 닫는 괄호 여기에 정확히 와야 함
+} // ✅ ← spawnBoxes 닫는 괄호
+
+
+  function dragify(el){
+    let dx=0,dy=0,drag=false;
+    el.addEventListener('pointerdown',e=>{
+      drag=true;el.setPointerCapture(e.pointerId);
+      const r=el.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;
+      el.style.zIndex=10;
+    });
+    el.addEventListener('pointermove',e=>{
+      if(!drag)return;
+      const s=stage.getBoundingClientRect();
+      let x=e.clientX-s.left-dx, y=e.clientY-s.top-dy;
+      x=clamp(x,0,stage.clientWidth-el.clientWidth);
+      y=clamp(y,0,stage.clientHeight-el.clientHeight);
+      el.style.left=x+'px'; el.style.top=y+'px';
+      highlightIfOver(el);
+    });
+    el.addEventListener('pointerup',e=>{
+      drag=false;el.releasePointerCapture(e.pointerId);
+      el.style.zIndex="";
+      dropIfOver(el);
+      clearHighlight();
+      requestAnimationFrame(()=>{ recompute(); checkAndShowPopup(); });
+    });
+  }
+
+  function highlightIfOver(box){
+    [panL,panR].forEach(p=>{
+      const over=isOver(box,p);
+      p.classList.toggle('highlight',over);
+    });
+  }
+  function clearHighlight(){[panL,panR].forEach(p=>p.classList.remove('highlight'));}
+
+  function isOver(box,pan){
+    const s=stage.getBoundingClientRect();
+    const b=box.getBoundingClientRect(), p=pan.getBoundingClientRect();
+    const cx=b.left-s.left+b.width/2, cy=b.top-s.top+b.height/2;
+    const left=p.left-s.left, right=p.right-s.left, top=p.top-s.top, bottom=p.bottom-s.top;
+    return (cx>left && cx<right && cy>top && cy<bottom);
+  }
+
+  function dropIfOver(box){
+    if(isOver(box,panL)){ panL.appendChild(box); adjustToPan(box,panL); }
+    else if(isOver(box,panR)){ panR.appendChild(box); adjustToPan(box,panR); }
+    else { stage.appendChild(box); }
+  }
+
+  function adjustToPan(box,pan){
+    box.style.position='absolute';
+    box.style.left=(pan.clientWidth/2 - box.clientWidth/2)+'px';
+    box.style.top='-120px';
+  }
+
+  function totalByPan(pan){
+    return [...pan.children]
+      .filter(x=>x.classList.contains('box'))
+      .reduce((sum,x)=>sum+(+x.dataset.price||0),0);
+  }
+
+  function updateGeometry(deg){
+    const px=pivotX(), py=PIVOTY;
+    const rad=-deg*Math.PI/180;
+    beam.style.transform=`translateX(-50%) rotate(${deg}deg)`;
+
+    const leftEnd={x:px-Math.cos(rad)*HALF,y:py+Math.sin(rad)*HALF};
+    const rightEnd={x:px+Math.cos(rad)*HALF,y:py-Math.sin(rad)*HALF};
+
+    chainL.style.transform=`translate(${leftEnd.x-2}px,${leftEnd.y}px)`;
+    chainR.style.transform=`translate(${rightEnd.x-2}px,${rightEnd.y}px)`;
+
+    const panLY=leftEnd.y+CHAIN, panLX=leftEnd.x;
+    const panRY=rightEnd.y+CHAIN,panRX=rightEnd.x;
+    panL.style.transform=`translate(${panLX - PANW/2}px,${panLY}px)`;
+    panR.style.transform=`translate(${panRX - PANW/2}px,${panRY}px)`;
+
+    sumL.style.left=panLX+'px'; sumL.style.top=(panLY+28)+'px';
+    sumR.style.left=panRX+'px'; sumR.style.top=(panRY+28)+'px';
+  }
+
+  function recompute(){
+    const L=totalByPan(panL);
+    const R=totalByPan(panR);
+    sumL.textContent='₩'+L.toLocaleString();
+    sumR.textContent='₩'+R.toLocaleString();
+    const torqueDiff=(R-L)*HALF;
+    const maxTorque=Math.max(L,R,1)*HALF;
+    const ratio=clamp(torqueDiff/(maxTorque||1),-1,1);
+    const targetDeg=clamp(Math.asin(ratio)*180/Math.PI,-MAXDG,MAXDG);
+    updateGeometry(targetDeg);
+  }
+
+  // 🔴 두 판에 모두 소품이 있을 때 팝업
+  function checkAndShowPopup() {
+    const leftChildren = [...panL.children].filter(x => x.classList.contains('box'));
+    const rightChildren = [...panR.children].filter(x => x.classList.contains('box'));
+    if (leftChildren.length && rightChildren.length) {
+      const leftItem = leftChildren[leftChildren.length - 1];
+      const rightItem = rightChildren[rightChildren.length - 1];
+      showPopup(leftItem, rightItem);
+    }
+  }
+
+function showPopup(leftItem, rightItem) {
+  console.log("✅ 팝업 실행됨");
+  const popup = document.getElementById("popup");
+  const leftBox = document.getElementById("left-item");
+  const rightBox = document.getElementById("right-item");
+  const result = document.getElementById("popup-result");
+
+  leftBox.innerHTML = `
+    <img src="${leftItem.querySelector('img').src}">
+    <p><strong>${leftItem.querySelector('img').alt}</strong></p>
+    <p>💵 $${parseInt(leftItem.dataset.price).toLocaleString()}</p>
+  `;
+
+  rightBox.innerHTML = `
+    <img src="${rightItem.querySelector('img').src}">
+    <p><strong>${rightItem.querySelector('img').alt}</strong></p>
+    <p>💵 $${parseInt(rightItem.dataset.price).toLocaleString()}</p>
+  `;
+
+  const lp = parseInt(leftItem.dataset.price);
+  const rp = parseInt(rightItem.dataset.price);
+
+  if (lp > rp) result.innerHTML = `💰 <b>${leftItem.querySelector('img').alt}</b>이(가) 더 비쌉니다!`;
+  else if (rp > lp) result.innerHTML = `💰 <b>${rightItem.querySelector('img').alt}</b>이(가) 더 비쌉니다!`;
+  else result.innerHTML = `⚖️ 두 소품의 가격이 같습니다.`;
+
+  popup.style.display = "flex";
+  document.getElementById("close-popup").onclick = () => {
+    popup.style.display = "none";
+  };
+}
+
+
+  $('#reset').addEventListener('click',()=>{ spawnBoxes(); requestAnimationFrame(recompute); });
+  $('#shuffle').addEventListener('click',()=>{ $$('.box').forEach(b=>{stage.appendChild(b);}); spawnBoxes(); });
+
+  spawnBoxes();
+  requestAnimationFrame(recompute);
+  </script>
+</body>
+</html>
